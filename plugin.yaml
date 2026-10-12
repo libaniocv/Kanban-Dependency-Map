@@ -1,0 +1,4 @@
+name: kanban-dependency-map
+version: 1.0.0
+description: Read-only dependency graph for Hermes Kanban boards in the web dashboard.
+author: libaniocv

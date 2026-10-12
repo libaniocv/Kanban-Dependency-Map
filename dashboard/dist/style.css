@@ -1,0 +1,71 @@
+/* Scoped: don't overwrite any Hermes dashboard styles. */
+.kdm-root { height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 10px;
+  padding: 16px; color: var(--color-foreground, #e2e8f0); font-family: var(--font-sans, sans-serif); }
+.kdm-root * { box-sizing: border-box; }
+.kdm-root button,.kdm-root select,.kdm-root input { font: inherit; }
+.kdm-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.kdm-header h1 { font-size: 1.45rem; font-weight: 700; line-height: 1.2; margin: 0; }
+.kdm-header p { font-size: .82rem; color: var(--color-muted-foreground, #94a3b8); margin: 4px 0 0; }
+.kdm-actions { display: flex; align-items: center; gap: 6px; }
+.kdm-btn { border: 1px solid var(--color-border,#425466); background: var(--color-card,#17242d);
+  color: var(--color-foreground,#e2e8f0); border-radius: 7px; padding: 7px 12px; font-size: .84rem;
+  text-decoration: none; cursor: pointer; white-space: nowrap; }
+.kdm-btn:hover { border-color: var(--color-primary,#14b8a6); }
+.kdm-btn:disabled { opacity: .45; cursor: default; }
+.kdm-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 9px; }
+.kdm-control { min-width: 110px; max-width: 230px; display: flex; flex-direction: column; gap: 4px; flex: 0 1 auto; }
+.kdm-control > span { color: var(--color-muted-foreground,#94a3b8); font-size: .7rem; font-weight: 600; }
+.kdm-control select,.kdm-control input { border: 1px solid var(--color-border,#425466);
+  color: var(--color-foreground,#e2e8f0); background: var(--color-card,#152630); border-radius: 6px;
+  padding: 8px; font-size: .82rem; min-width: 0; width: 100%; }
+.kdm-search { flex: 1 1 170px; max-width: 350px; }
+.kdm-toggle { font-size: .8rem; white-space: nowrap; display: flex; gap: 7px; align-items: center; padding: 8px 4px; }
+.kdm-summary { display: flex; gap: 16px; flex-wrap: wrap; font-size: .75rem; color: var(--color-muted-foreground,#94a3b8); }
+.kdm-warning { color: #f59e0b; }.kdm-error { border: 1px solid #dc2626; color: #f87171;
+  padding: 9px 12px; border-radius: 7px; font-size: .8rem; }
+.kdm-workspace { display: flex; flex: 1 1 0; min-height: 380px; gap: 10px; }
+.kdm-map-shell { flex: 1 1 0; min-width: 0; min-height: 0; position: relative; border-radius: 10px;
+  background: var(--color-background,#0b141c); border: 1px solid var(--color-border,#425466); overflow: hidden; }
+.kdm-map-viewport { width: 100%; height: 100%; position: absolute; inset: 0; overflow: hidden;
+  cursor: grab; touch-action: none; background-image: radial-gradient(var(--color-border,#263747) .8px, transparent .8px);
+  background-size: 20px 20px; }
+.kdm-map-viewport:active { cursor: grabbing; }
+.kdm-svg { position: absolute; top: 0; left: 0; overflow: visible; transform-origin: 0 0; }
+.kdm-map-tools { position: absolute; display: flex; align-items: center; gap: 5px; z-index: 2;
+  top: 12px; right: 12px; background: var(--color-card,#162730); padding: 4px; border-radius: 8px; }
+.kdm-map-tools .kdm-btn { padding: 4px 10px; font-weight: 700; }.kdm-map-tools span { font-size: .75rem; min-width: 44px; text-align: center; }
+.kdm-map-hint { position: absolute; z-index: 1; bottom: 10px; left: 12px; font-size: .71rem;
+  padding: 5px 8px; border-radius: 7px; pointer-events: none;
+  color: var(--color-muted-foreground,#94a3b8); background: var(--color-card,#152630); }
+.kdm-map-message { position: absolute; top: 48%; left: 50%; transform: translate(-50%, -50%);
+  color: var(--color-muted-foreground,#94a3b8); pointer-events: none; text-align: center; }
+.kdm-edge { fill: none; stroke: var(--color-muted-foreground,#8792a2); stroke-width: 1.6px; opacity: .65; }
+.kdm-edge.is-related { stroke: var(--color-primary,#14b8a6); stroke-width: 2.6px; opacity: 1; }
+.kdm-graph-node { cursor: pointer; transition: opacity .12s ease; outline: none; }
+.kdm-graph-node:focus rect:first-of-type { stroke: var(--color-primary,#14b8a6); stroke-width: 3; }
+.kdm-title { fill: var(--color-foreground,#e2e8f0); font-weight: 600; font-size: 12px; }
+.kdm-id { fill: var(--color-muted-foreground,#94a3b8); font-size: 10px; font-family: monospace; }
+.kdm-meta { fill: var(--color-muted-foreground,#94a3b8); font-size: 10px; }
+.kdm-inspector { width: 260px; flex: 0 0 260px; overflow: auto; border-radius: 10px;
+  padding: 15px; background: var(--color-card,#14232e); border: 1px solid var(--color-border,#425466); }
+.kdm-inspector h2 { font-size: 1rem; font-weight: 650; margin: 13px 0 8px; overflow-wrap: anywhere; }
+.kdm-inspector h3 { font-size: .84rem; font-weight: 650; margin: 19px 0 9px; }
+.kdm-inspector-head { display: flex; align-items: center; justify-content: space-between; }
+.kdm-inspector-head .kdm-btn { padding: 2px 10px; }
+.kdm-task-id { font-size: .72rem; color: var(--color-muted-foreground,#94a3b8); overflow-wrap: anywhere; }
+.kdm-details { display: flex; flex-direction: column; gap: 8px; margin: 13px 0; font-size: .8rem; }
+.kdm-badge { display: inline-block; max-width: fit-content; padding: 4px 8px; border-radius: 99px;
+  border: 1px solid var(--kdm-state); color: var(--kdm-state); font-size: .76rem; }
+.kdm-inspector-controls .kdm-control { max-width: none; }
+.kdm-linked-task { border: 1px solid var(--color-border,#425466); border-radius: 7px; background: transparent;
+  text-align: left; width: 100%; font-size: .77rem; display: flex; align-items: center; gap: 7px;
+  color: inherit; padding: 9px; margin: 5px 0; cursor: pointer; }
+.kdm-linked-task:hover { border-color: var(--color-primary,#14b8a6); }.kdm-linked-task:disabled { opacity: .45; }
+.kdm-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: 0 0 9px; }
+.kdm-muted, .kdm-empty-inspector p { font-size: .8rem; line-height: 1.5;
+  color: var(--color-muted-foreground,#94a3b8); }
+.kdm-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px;
+  font-size: .76rem; }.kdm-legend > div { display: flex; align-items: center; gap: 7px; }
+@media (max-width: 880px) { .kdm-root { padding: 9px; }.kdm-workspace { flex-direction: column; }
+  .kdm-map-shell { min-height: 400px; }.kdm-inspector { width: 100%; flex: 0 0 auto; max-height: 250px; }
+  .kdm-filters .kdm-control { max-width: none; flex: 1 1 120px; } }

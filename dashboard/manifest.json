@@ -1,0 +1,14 @@
+{
+  "name": "kanban-dependency-map",
+  "label": "Dependency Map",
+  "description": "Interactive dependency graphs for Hermes Kanban boards",
+  "icon": "Activity",
+  "version": "1.0.0",
+  "tab": {
+    "path": "/kanban-dependency-map",
+    "position": "after:plugins"
+  },
+  "entry": "dist/index.js",
+  "css": "dist/style.css",
+  "api": "plugin_api.py"
+}

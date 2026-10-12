@@ -1,0 +1,297 @@
+// Dashboard UI. Uses Hermes' shared React and SDK fetchJSON. No CDN or dependencies.
+const SDK = window.__HERMES_PLUGIN_SDK__;
+if (!SDK || !window.__HERMES_PLUGINS__) {
+  throw new Error('Kanban Dependency Map requires the Hermes web dashboard plugin SDK');
+}
+const React = SDK.React;
+const h = React.createElement;
+const { useEffect, useMemo, useRef, useState } = React;
+const API = '/api/plugins/kanban-dependency-map';
+const POLL_MS = 8000;
+const STATUS_COLORS = {
+  done: '#16a34a', running: '#3b82f6', blocked: '#ef4444',
+  ready: '#0ea5e9', todo: '#d97706', triage: '#a78bfa', archived: '#64748b',
+};
+const colorFor = (status) => STATUS_COLORS[status] || '#8b5cf6';
+const labelFor = (value) => String(value || 'Unassigned');
+const unique = (items) => [...new Set(items.filter(Boolean))].sort((a, b) => a.localeCompare(b));
+const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
+
+function ToolButton({ title, onClick, children, disabled }) {
+  return h('button', { type: 'button', className: 'kdm-btn', title, 'aria-label': title, onClick, disabled }, children);
+}
+function Control({ label, value, onChange, items }) {
+  return h('label', { className: 'kdm-control' },
+    h('span', null, label),
+    h('select', { value, onChange: (event) => onChange(event.target.value) },
+      items.map((item) => h('option', { key: item.value, value: item.value }, item.label))));
+}
+function badge(text, color) {
+  return h('span', { className: 'kdm-badge', style: { '--kdm-state': color } }, text);
+}
+function textAt(x, y, children, props = {}) {
+  return h('text', { x, y, ...props }, children);
+}
+function shorten(value, length) {
+  const chars = [...String(value || '')];
+  return chars.length > length ? chars.slice(0, length - 1).join('') + '…' : chars.join('');
+}
+
+function GraphNode({ node, selected, related, dimmed, onClick }) {
+  const c = colorFor(node.status);
+  return h('g', {
+    key: node.id,
+    className: 'kdm-graph-node' + (selected ? ' is-selected' : ''),
+    transform: `translate(${node.x},${node.y})`,
+    onClick: (event) => { event.stopPropagation(); onClick(node.id); },
+    role: 'button', tabIndex: 0,
+    'aria-label': `Task ${node.title}, ${node.status}`,
+    onKeyDown: (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(node.id); }
+    },
+    style: { opacity: dimmed ? 0.3 : 1 },
+  },
+  h('title', null, `${node.title}\n${node.id}\n${node.status}`),
+  h('rect', { x: 0, y: 0, width: CARD_W, height: CARD_H, rx: 12,
+    fill: 'var(--color-card, #121e25)', stroke: selected ? 'var(--color-primary, #14b8a6)' : 'var(--color-border, #334155)',
+    strokeWidth: selected ? 3 : related ? 2 : 1.2 }),
+  h('rect', { x: 0, y: 12, width: 4, height: CARD_H - 24, rx: 2, fill: c }),
+  textAt(14, 22, shorten(node.title, 32), { className: 'kdm-title' }),
+  textAt(14, 43, shorten(node.id, 34), { className: 'kdm-id' }),
+  h('circle', { cx: 19, cy: 66, r: 4.5, fill: c }),
+  textAt(29, 70, shorten(node.status, 15), { className: 'kdm-meta' }),
+  textAt(CARD_W - 13, 70, shorten(labelFor(node.assignee), 15), {
+    className: 'kdm-meta', textAnchor: 'end' }));
+}
+
+function MapPage() {
+  const [boards, setBoards] = useState([]);
+  const [board, setBoard] = useState('');
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState(true);
+  const [error, setError] = useState('');
+  const [selected, setSelected] = useState('');
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('');
+  const [assignee, setAssignee] = useState('');
+  const [tenant, setTenant] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+  const [scope, setScope] = useState('all');
+  const [direction, setDirection] = useState('LR');
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 30, y: 30 });
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [updatedAt, setUpdatedAt] = useState(0);
+  const viewport = useRef(null);
+  const dragging = useRef(null);
+  const fetchedId = useRef('');
+
+  useEffect(() => {
+    let active = true;
+    SDK.fetchJSON(API + '/boards').then((response) => {
+      if (!active) return;
+      const entries = response.boards || [];
+      setBoards(entries);
+      const preferred = response.current;
+      setBoard((old) => old || (entries.find((b) => b.slug === preferred) || entries[0] || {}).slug || '');
+      if (!entries.length) setBusy(false);
+    }).catch((e) => {
+      if (active) { setError('Could not load boards: ' + e.message); setBusy(false); }
+    });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!board) return undefined;
+    let active = true;
+    let fetching = false;
+    setData(null);
+    setBusy(true);
+    setError('');
+    setSelected('');
+    fetchedId.current = '';
+    async function load() {
+      if (!active || fetching) return;
+      fetching = true;
+      try {
+        const result = await SDK.fetchJSON(API + '/graph?board=' + encodeURIComponent(board));
+        if (active) {
+          if (fetchedId.current !== String(result.event_id)) {
+            setData(result);
+            fetchedId.current = String(result.event_id);
+          }
+          setUpdatedAt(result.fetched_at || Math.floor(Date.now() / 1000));
+          setError('');
+        }
+      } catch (e) {
+        if (active) setError('Graph refresh failed: ' + e.message);
+      } finally {
+        fetching = false;
+        if (active) setBusy(false);
+      }
+    }
+    load();
+    const timer = window.setInterval(() => {
+      if (!document.hidden) load();
+    }, POLL_MS);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [board, refreshKey]);
+
+  const nodes = (data && data.nodes) || [];
+  const edges = (data && data.edges) || [];
+  const statuses = useMemo(() => unique(nodes.map((n) => n.status)), [data]);
+  const assignees = useMemo(() => unique(nodes.map((n) => n.assignee)), [data]);
+  const tenants = useMemo(() => unique(nodes.map((n) => n.tenant)), [data]);
+  const filtered = useMemo(() => visibleGraph(data, {
+    query: search, status, assignee, tenant, showArchived, focusId: selected, scope,
+  }), [data, search, status, assignee, tenant, showArchived, selected, scope]);
+  const layout = useMemo(() => buildLayout(filtered, direction), [filtered, direction]);
+  const rel = useMemo(() => selected ? ancestorsAndDescendants({ nodes, edges }, selected) : null,
+    [data, selected]);
+  const selectedNode = nodes.find((n) => n.id === selected);
+  const activeNodes = new Set(filtered.nodes.map((n) => n.id));
+  const fitMap = () => {
+    const element = viewport.current;
+    if (!element || !layout.nodes.length) return;
+    const rect = element.getBoundingClientRect();
+    const factor = clamp(Math.min((rect.width - 20) / layout.width, (rect.height - 20) / layout.height), 0.15, 2);
+    setZoom(factor);
+    setPan({ x: (rect.width - layout.width * factor) / 2, y: (rect.height - layout.height * factor) / 2 });
+  };
+  useEffect(() => {
+    if (!data) return;
+    fitMap();
+  }, [board, search, status, assignee, tenant, showArchived, scope, direction, data && data.event_id]);
+
+  const panStart = (e) => {
+    if (e.button !== 0 || e.target.closest('.kdm-graph-node')) return;
+    dragging.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+    if (e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const panMove = (e) => {
+    const d = dragging.current;
+    if (d) setPan({ x: d.panX + e.clientX - d.x, y: d.panY + e.clientY - d.y });
+  };
+  const wheelZoom = (e) => {
+    e.preventDefault();
+    const rect = viewport.current.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left, mouseY = e.clientY - rect.top;
+    const next = clamp(zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12), 0.12, 2.5);
+    const ratio = next / zoom;
+    setPan({ x: mouseX - (mouseX - pan.x) * ratio, y: mouseY - (mouseY - pan.y) * ratio });
+    setZoom(next);
+  };
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  const parents = edges.filter((e) => e.target === selected).map((e) => nodeById.get(e.source)).filter(Boolean);
+  const children = edges.filter((e) => e.source === selected).map((e) => nodeById.get(e.target)).filter(Boolean);
+  const graphStats = `${filtered.nodes.length}/${nodes.length} tasks · ${filtered.edges.length}/${edges.length} dependencies`;
+
+  return h('div', { className: 'kdm-root' },
+    h('header', { className: 'kdm-header' },
+      h('div', null, h('h1', null, 'Kanban Dependency Map'),
+        h('p', null, 'Prerequisite → dependent · read-only graph · updates every 8 seconds')),
+      h('div', { className: 'kdm-actions' },
+        ToolButton({ title: 'Refresh now', onClick: () => setRefreshKey((i) => i + 1), children: '↻ Refresh' }),
+        ToolButton({ title: 'Fit graph to viewport', onClick: fitMap, children: '⤢ Fit' }),
+        h('a', { className: 'kdm-btn', href: '/kanban', title: 'Open the original Kanban board' }, 'Open Kanban'))),
+    h('div', { className: 'kdm-filters' },
+      Control({ label: 'Board', value: board, onChange: (v) => { setBoard(v); setScope('all'); },
+        items: boards.length ? boards.map((b) => ({ label: b.name || b.slug, value: b.slug })) : [{ value: '', label: 'No boards found' }] }),
+      h('label', { className: 'kdm-control kdm-search' },
+        h('span', null, 'Search tasks'),
+        h('input', { placeholder: 'ID, title, profile, tenant...', value: search,
+          onChange: (e) => setSearch(e.target.value), 'aria-label': 'Search tasks' })),
+      Control({ label: 'Status', value: status, onChange: setStatus,
+        items: [{ label: 'All statuses', value: '' }, ...statuses.map((v) => ({ label: v, value: v }))] }),
+      Control({ label: 'Profile', value: assignee, onChange: setAssignee,
+        items: [{ label: 'All profiles', value: '' }, ...assignees.map((v) => ({ label: v, value: v }))] }),
+      Control({ label: 'Tenant', value: tenant, onChange: setTenant,
+        items: [{ label: 'All tenants', value: '' }, ...tenants.map((v) => ({ label: v, value: v }))] }),
+      Control({ label: 'Direction', value: direction, onChange: setDirection,
+        items: [{ label: 'Left → right', value: 'LR' }, { label: 'Top → bottom', value: 'TB' }] }),
+      h('label', { className: 'kdm-toggle' }, h('input', { type: 'checkbox', checked: showArchived,
+        onChange: (e) => setShowArchived(e.target.checked) }), 'Include archived')),
+    h('div', { className: 'kdm-summary', role: 'status' },
+      h('span', null, graphStats),
+      h('span', null, updatedAt ? `Last sync: ${new Date(updatedAt * 1000).toLocaleTimeString()}` : ''),
+      layout.hasCycle ? h('span', { className: 'kdm-warning' }, '⚠ Cycle detected in task links') : null),
+    error ? h('div', { className: 'kdm-error', role: 'alert' }, error) : null,
+    h('div', { className: 'kdm-workspace' },
+      h('div', { className: 'kdm-map-shell' },
+        h('div', { className: 'kdm-map-tools' },
+          ToolButton({ title: 'Zoom in', onClick: () => setZoom((n) => clamp(n * 1.2, 0.12, 2.5)), children: '+' }),
+          h('span', null, `${Math.round(zoom * 100)}%`),
+          ToolButton({ title: 'Zoom out', onClick: () => setZoom((n) => clamp(n / 1.2, 0.12, 2.5)), children: '−' })),
+        h('div', { className: 'kdm-map-viewport', ref: viewport,
+          onPointerDown: panStart, onPointerMove: panMove,
+          onPointerUp: () => { dragging.current = null; },
+          onPointerCancel: () => { dragging.current = null; },
+          onWheel: wheelZoom,
+          'aria-label': 'Interactive dependency diagram; drag empty space to pan, scroll to zoom' },
+          h('svg', {
+            className: 'kdm-svg', width: layout.width, height: layout.height,
+            viewBox: `0 0 ${layout.width} ${layout.height}`,
+            style: { transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` },
+            role: 'img', 'aria-label': `${filtered.nodes.length} Kanban tasks and ${filtered.edges.length} dependencies`,
+          },
+          h('defs', null, h('marker', {
+            id: 'kdm-arrow', markerWidth: 9, markerHeight: 9,
+            refX: 8, refY: 4.5, orient: 'auto', markerUnits: 'userSpaceOnUse',
+          }, h('path', { d: 'M 0 0 L 9 4.5 L 0 9 z', fill: 'var(--color-muted-foreground, #8792a2)' }))),
+          layout.edges.map((edge, i) => {
+            const isRelated = selected && (edge.source === selected || edge.target === selected ||
+              ((rel.ancestors.has(edge.source) && rel.ancestors.has(edge.target)) ||
+               (rel.descendants.has(edge.source) && rel.descendants.has(edge.target))));
+            return h('path', { key: `${edge.source}:${edge.target}:${i}`, d: edgePath(edge, layout.horizontal),
+              className: 'kdm-edge' + (isRelated ? ' is-related' : ''),
+              style: { opacity: selected && !isRelated ? 0.22 : 1 },
+              markerEnd: 'url(#kdm-arrow)' });
+          }),
+          layout.nodes.map((node) => GraphNode({ key: node.id, node, selected: selected === node.id,
+            related: !!(rel && (rel.ancestors.has(node.id) || rel.descendants.has(node.id))),
+            dimmed: !!(selected && node.id !== selected && rel &&
+              !rel.ancestors.has(node.id) && !rel.descendants.has(node.id)),
+            onClick: (id) => setSelected((s) => s === id ? '' : id) }))),
+          busy && !data ? h('div', { className: 'kdm-map-message' }, 'Loading dependency graph…') : null,
+          !busy && !data && !board ? h('div', { className: 'kdm-map-message' }, 'No boards available. Run hermes kanban init.') : null,
+          data && !filtered.nodes.length ? h('div', { className: 'kdm-map-message' }, 'No tasks match these filters.') : null),
+        h('div', { className: 'kdm-map-hint' }, 'Select a task · drag canvas to pan · scroll to zoom')),
+      h('aside', { className: 'kdm-inspector' },
+        selectedNode ? h(React.Fragment, null,
+          h('div', { className: 'kdm-inspector-head' },
+            h('strong', null, 'Task details'),
+            ToolButton({ title: 'Clear selection', onClick: () => { setSelected(''); setScope('all'); }, children: '×' })),
+          h('h2', null, selectedNode.title),
+          h('code', { className: 'kdm-task-id' }, selectedNode.id),
+          h('div', { className: 'kdm-details' },
+            badge(selectedNode.status, colorFor(selectedNode.status)),
+            h('span', null, `Profile: ${labelFor(selectedNode.assignee)}`),
+            h('span', null, `Priority: ${selectedNode.priority}`),
+            selectedNode.tenant ? h('span', null, `Tenant: ${selectedNode.tenant}`) : null,
+            selectedNode.block_kind ? h('span', null, `Block reason: ${selectedNode.block_kind}`) : null),
+          h('div', { className: 'kdm-inspector-controls' },
+            Control({ label: 'Graph scope', value: scope, onChange: setScope, items: [
+              { value: 'all', label: 'All tasks' }, { value: 'direct', label: 'Direct neighbors' },
+              { value: 'chain', label: 'Entire connected chain' }] })),
+          h('h3', null, `Prerequisites (${parents.length})`),
+          parents.length ? parents.map((n) => h('button', { className: 'kdm-linked-task', key: n.id,
+            onClick: () => setSelected(n.id), type: 'button',
+            disabled: !activeNodes.has(n.id) },
+            h('span', { className: 'kdm-dot', style: { backgroundColor: colorFor(n.status) } }),
+            shorten(n.title, 35))) : h('p', { className: 'kdm-muted' }, 'No prerequisites'),
+          h('h3', null, `Dependent tasks (${children.length})`),
+          children.length ? children.map((n) => h('button', { className: 'kdm-linked-task', key: n.id,
+            onClick: () => setSelected(n.id), type: 'button',
+            disabled: !activeNodes.has(n.id) },
+            h('span', { className: 'kdm-dot', style: { backgroundColor: colorFor(n.status) } }),
+            shorten(n.title, 35))) : h('p', { className: 'kdm-muted' }, 'No dependent tasks'),
+          h('p', { className: 'kdm-muted' }, `Upstream: ${rel.ancestors.size} · Downstream: ${rel.descendants.size}`)) :
+          h('div', { className: 'kdm-empty-inspector' },
+            h('h2', null, 'Select a task'),
+            h('p', null, 'Click a node to inspect direct prerequisites, dependents and its entire dependency chain.'),
+            h('div', { className: 'kdm-legend' },
+              Object.entries(STATUS_COLORS).map(([name, color]) => h('div', { key: name },
+                h('span', { className: 'kdm-dot', style: { backgroundColor: color } }), name)))))));
+}
+
+window.__HERMES_PLUGINS__.register('kanban-dependency-map', MapPage);
